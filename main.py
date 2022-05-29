@@ -125,7 +125,7 @@ if __name__ == "__main__":
                 "freq_avg": freq_avg,
                 "fan_speed_in": fan_speed_in,
                 "fan_speed_out": fan_speed_out,
-                "hashrate_1m": "%.1fTH/s" % (hashrate_1m / 1000000),
+                "hashrate_1m": "%.1f TH/s" % (hashrate_1m / 1000000),
             }
 
             result = WhatsminerAPI.get_read_only_info(whatsminer_token, cmd='edevs')
@@ -133,11 +133,11 @@ if __name__ == "__main__":
             for board in result['DEVS']:
                 hashboards.append({
                     "temp": board['Temperature'],
-                    "hashrate_1m": "%.1fTH/s" % (board['MHS 1m'] / 1000000),
+                    "hashrate_1m": "%.1f TH/s" % (board['MHS 1m'] / 1000000),
                 })
             status["hashboards"] = hashboards
 
-            print(f"""{datetime.datetime.now():%Y-%m-%d %H:%M:%S}: is_mining: {is_mining}  |  {cur_electricity_price:5.1f}¢/kWh  |  {status["power"]}W  |  {status["env_temp"]}C / {status["env_temp"] * 1.8 + 32:.01f}F  |  {status["fan_speed_in"]}/{status["fan_speed_out"]}rpm  |  {status["hashrate_1m"]}  |  {", ".join([str(hb["temp"]) for hb in status["hashboards"]])}""")
+            print(f"""{datetime.datetime.now():%Y-%m-%d %H:%M:%S}: is_mining: {is_mining}  |  {cur_electricity_price:5.1f} ¢/kWh  |  {status["power"]}W  |  {status["env_temp"] * 1.8 + 32:5.1f}F  |  {status["fan_speed_in"]}-{status["fan_speed_out"]}rpm  |  {status["hashrate_1m"]}  |  {", ".join([str(hb["temp"]) for hb in status["hashboards"]])}""")
         except Exception as e:
             # Log it but don't worry; can get bad response if mining just recently resumed.
             print(repr(e))
