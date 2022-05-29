@@ -137,12 +137,15 @@ if __name__ == "__main__":
                 })
             status["hashboards"] = hashboards
 
-            print(json.dumps(status, indent=4))
+            print(f"""{datetime.datetime.now():%Y-%m-%d %H:%M:%S}: is_mining: {is_mining}  |  {cur_electricity_price:5.1f}¢/kWh  |  {status["power"]}W  |  {status["env_temp"]}C / {status["env_temp"] * 1.8 + 32:.01f}F  |  {status["fan_speed_in"]}/{status["fan_speed_out"]}rpm  |  {status["hashrate_1m"]}  |  {", ".join([str(hb["temp"]) for hb in status["hashboards"]])}""")
         except Exception as e:
             # Log it but don't worry; can get bad response if mining just recently resumed.
             print(repr(e))
             fan_speed_in = 0
             freq_avg = 0
+
+    else:
+        print(f"""{datetime.datetime.now():%Y-%m-%d %H:%M:%S}: is_mining: {is_mining}  |  {cur_electricity_price:0.2f}¢/kWh""")
 
     if is_mining and cur_electricity_price > electricity_price_limit:
         # Stop mining, we've passed the price threshold
@@ -182,28 +185,4 @@ if __name__ == "__main__":
             print(f"{datetime.datetime.now()}: {subject}")
             print(msg)
 
-    print(f"{datetime.datetime.now()}: is_mining: {is_mining} | cur_electricity_price: {cur_electricity_price:0.2f}¢/kWh")
-
-
-    # percent = None
-    # if is_mining and fan_speed_in >= 7600 and freq_avg >= 920:
-    #     # We're running full-out and too hot; slow down
-    #     percent = "-1"
-
-    # elif is_mining and fan_speed_in >= 7600 and freq_avg >= 850:
-    #     # Have to ramp down further
-    #     percent = "-2"
-
-    # if percent is not None:
-    #     whatsminer_token.enable_write_access(admin_password=admin_password)
-    #     response = WhatsminerAPI.exec_command(whatsminer_token, cmd='set_target_freq', additional_params={"percent": percent})
-    #     subject = f"REDUCING miner frequency @ {freq_avg} / {fan_speed_in}rpm to \"{percent}\""
-    #     msg = f"{cur_timestamp}: " + json.dumps(response, indent=4)
-    #     sns.publish(
-    #         TopicArn=sns_topic,
-    #         Subject=subject,
-    #         Message=msg
-    #     )
-    #     print(f"{datetime.datetime.now()}: {subject}")
-    #     print(msg)
-
+    # print(f"{datetime.datetime.now()}: is_mining: {is_mining} | cur_electricity_price: {cur_electricity_price:0.2f}¢/kWh")
