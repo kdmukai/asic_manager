@@ -163,8 +163,8 @@ if __name__ == "__main__":
 
     elif not is_mining and cur_electricity_price < electricity_price_limit:
         # Resume mining? Electricity price has fallen below our threshold; but don't
-        #   get faked out by a single period dropping. Must see num_restart_periods in a row below
-        #   threshold before resuming.
+        #   get faked out by a single period dropping. Must see n periods in a row 
+        #   (`resume_mining_after`) below the price threshold before resuming.
         resume_mining = True
         for i in range(1, resume_mining_after + 1):
             (ts, price) = prices[i]
