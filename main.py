@@ -4,6 +4,7 @@ import configparser
 import datetime
 import json
 import requests
+import time
 
 from decimal import Decimal
 
@@ -87,21 +88,29 @@ if __name__ == "__main__":
     # Get the current electricity price
     try:
         prices = comed_api.get_last_hour()
-    except requests.exceptions.ConnectionError as e:
-        # if the real-time price API is down, assume the worst and shut down
-        whatsminer_token.enable_write_access(admin_password=admin_password)
-        response = WhatsminerAPI.exec_command(whatsminer_token, cmd='power_off', additional_params={"respbefore": "false"})
-        subject = f"STOPPING miner @ UNKNOWN ¢/kWh"
-        msg = "ComEd real-time price API is down"
-        sns.publish(
-            TopicArn=sns_topic,
-            Subject=subject,
-            Message=msg
-        )
-        print(f"{datetime.datetime.now()}: {subject}")
-        print(msg)
-        print(json.dumps(response, indent=4))
-        exit()
+    except Exception as e:
+        print(f"First attempt to reach ComEd API: {repr(e)}")
+        # Wait and try again before giving up
+        time.sleep(30)
+        try:
+            prices = comed_api.get_last_hour()
+        except Exception as e:
+            print(f"Second attempt to reach ComEd API: {repr(e)}")
+
+            # if the real-time price API is down, assume the worst and shut down
+            whatsminer_token.enable_write_access(admin_password=admin_password)
+            response = WhatsminerAPI.exec_command(whatsminer_token, cmd='power_off', additional_params={"respbefore": "false"})
+            subject = f"STOPPING miner @ UNKNOWN ¢/kWh"
+            msg = "ComEd real-time price API is down"
+            sns.publish(
+                TopicArn=sns_topic,
+                Subject=subject,
+                Message=msg
+            )
+            print(f"{datetime.datetime.now()}: {subject}")
+            print(msg)
+            print(json.dumps(response, indent=4))
+            exit()
 
     (cur_timestamp, cur_electricity_price) = prices[0]
 
@@ -125,7 +134,7 @@ if __name__ == "__main__":
                 "freq_avg": freq_avg,
                 "fan_speed_in": fan_speed_in,
                 "fan_speed_out": fan_speed_out,
-                "hashrate_1m": "%.1f TH/s" % (hashrate_1m / 1000000),
+                "hashrate_1m": "%4.1f TH/s" % (hashrate_1m / 1000000),
             }
 
             result = WhatsminerAPI.get_read_only_info(whatsminer_token, cmd='edevs')
@@ -137,7 +146,7 @@ if __name__ == "__main__":
                 })
             status["hashboards"] = hashboards
 
-            print(f"""{datetime.datetime.now():%Y-%m-%d %H:%M:%S}: is_mining: {is_mining}  |  {cur_electricity_price:5.1f} ¢/kWh  |  {status["power"]}W  |  {status["env_temp"] * 1.8 + 32:5.1f}F  |  {status["fan_speed_in"]}-{status["fan_speed_out"]}rpm  |  {status["hashrate_1m"]}  |  {", ".join([str(hb["temp"]) for hb in status["hashboards"]])}""")
+            print(f"""{datetime.datetime.now():%Y-%m-%d %H:%M:%S}: is_mining: {is_mining}  |  {cur_electricity_price:5.1f} ¢/kWh  |  {status["power"]:4d}W  |  {status["env_temp"] * 1.8 + 32:5.1f}F ({status["env_temp"]}C)  |  {status["fan_speed_in"]}-{status["fan_speed_out"]}rpm  |  {status["hashrate_1m"]}  |  {", ".join([str(hb["temp"]) for hb in status["hashboards"]])}""")
         except Exception as e:
             # Log it but don't worry; can get bad response if mining just recently resumed.
             print(repr(e))
