@@ -1,2 +1,2 @@
-pyasic==0.64.10
+pyasic==0.64.11
 requests==2.32.3
