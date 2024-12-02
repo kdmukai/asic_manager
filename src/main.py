@@ -145,7 +145,7 @@ async def run(arg_config: configparser.ConfigParser):
             #     Subject=subject,
             #     Message=msg
             # )
-            print(f"{datetime.datetime.now()}: {subject}")
+            # print(f"{datetime.datetime.now()}: {subject}")
             # print(msg)
 
     elif cur_electricity_price < max_electricity_price:
@@ -175,7 +175,7 @@ async def run(arg_config: configparser.ConfigParser):
                 #     Subject=subject,
                 #     Message=msg
                 # )
-                print(f"{datetime.datetime.now()}: {subject}")
+                # print(f"{datetime.datetime.now()}: {subject}")
                 # print(msg)
 
     print(f"{datetime.datetime.now()}: freq: {cur_freq} MHz ({min_freq}-{max_freq}) | {cur_electricity_price:0.2f}¢/kWh | {subject}")
