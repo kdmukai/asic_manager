@@ -181,6 +181,9 @@ async def run(arg_config: configparser.ConfigParser):
                 # )
                 # print(f"{datetime.datetime.now()}: {subject}")
                 # print(msg)
+        
+        else:
+            subject = f"Holding freq, pending {resume_after} periods below threshold"
 
     print(f"{datetime.datetime.now()}: freq: {cur_freq} MHz ({min_freq}-{max_freq}) | {cur_electricity_price:0.2f}¢/kWh ({max_electricity_price}) | {subject}")
 
