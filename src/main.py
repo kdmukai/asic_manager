@@ -84,6 +84,10 @@ async def run(arg_config: configparser.ConfigParser):
 
     # Get the miner
     miner: BaseMiner = await get_miner(ip_address)
+    if not miner:
+        print(f"{datetime.datetime.now()}: Miner not found at {ip_address}")
+        exit()
+
     config = await miner.get_config()
     cur_freq = int(config.mining_mode.global_freq)
 
@@ -178,7 +182,7 @@ async def run(arg_config: configparser.ConfigParser):
                 # print(f"{datetime.datetime.now()}: {subject}")
                 # print(msg)
 
-    print(f"{datetime.datetime.now()}: freq: {cur_freq} MHz ({min_freq}-{max_freq}) | {cur_electricity_price:0.2f}¢/kWh | {subject}")
+    print(f"{datetime.datetime.now()}: freq: {cur_freq} MHz ({min_freq}-{max_freq}) | {cur_electricity_price:0.2f}¢/kWh ({max_electricity_price}) | {subject}")
 
 
 
