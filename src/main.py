@@ -153,6 +153,12 @@ async def run(arg_config: configparser.ConfigParser):
         new_freq_due_to_temp = min(max_freq, cur_freq + freq_step)
         subject = f"INCREASING miner freq @ {cur_temp}°C to {new_freq_due_to_temp}"
     
+    else:
+        # We are within our temp bounds; don't allow low price to increase temp
+        if new_freq_due_to_price > cur_freq:
+            new_freq_due_to_price = cur_freq
+            subject = f"Holding freq @ {cur_temp}°C; in target temp range"
+    
     if new_freq_due_to_price != cur_freq or new_freq_due_to_temp != cur_freq:
         # Have to decide which change to apply; heat takes precedence.
         if new_freq_due_to_temp < cur_freq:
