@@ -21,6 +21,8 @@ async def run(arg_config: configparser.ConfigParser):
     freq_step = arg_config.getint('ASIC', 'FREQ_STEP')
     max_electricity_price = Decimal(arg_config.get('ASIC', 'MAX_ELECTRICITY_PRICE'))
     resume_after = arg_config.getint('ASIC', 'RESUME_AFTER')
+    max_temp = arg_config.getint('ASIC', 'MAX_TEMP')
+    resume_at_temp = arg_config.getint('ASIC', 'RESUME_AT_TEMP')
 
     # weather_api_key = arg_config.get('APIS', 'WEATHER_API_KEY')
     # weather_zip_code = arg_config.get('APIS', 'WEATHER_ZIP_CODE')
@@ -66,8 +68,6 @@ async def run(arg_config: configparser.ConfigParser):
             print(f"Second attempt to reach ComEd API: {repr(e)}")
 
             # if the real-time price API is down, assume the worst and shut down
-            # whatsminer_token.enable_write_access(admin_password=admin_password)
-            # response = WhatsminerAPI.exec_command(whatsminer_token, cmd='power_off', additional_params={"respbefore": "false"})
             # subject = f"STOPPING miner @ UNKNOWN ¢/kWh"
             # msg = "ComEd real-time price API is down"
             # sns.publish(
@@ -76,8 +76,6 @@ async def run(arg_config: configparser.ConfigParser):
             #     Message=msg
             # )
             # print(f"{datetime.datetime.now()}: {subject}")
-            # print(msg)
-            # print(json.dumps(response, indent=4))
             exit()
 
     (cur_timestamp, cur_electricity_price) = prices[0]
@@ -87,69 +85,31 @@ async def run(arg_config: configparser.ConfigParser):
     if not miner:
         print(f"{datetime.datetime.now()}: Miner not found at {ip_address}")
         exit()
+    
+    hashboards = await miner.get_hashboards()
+    cur_temp = max(board.temp for board in hashboards if board.temp)
 
     config = await miner.get_config()
     cur_freq = int(config.mining_mode.global_freq)
-
-
-    # if is_mining:
-    #     # Also retrieve temps, hashrate, etc
-    #     try:
-    #         result = WhatsminerAPI.get_read_only_info(whatsminer_token, cmd='summary')
-    #         power = result['SUMMARY'][0]['Power']
-    #         env_temp = result['SUMMARY'][0]['Env Temp']
-    #         freq_avg = result['SUMMARY'][0]['freq_avg']
-    #         fan_speed_in = result['SUMMARY'][0]['Fan Speed In']
-    #         fan_speed_out = result['SUMMARY'][0]['Fan Speed Out']
-    #         hashrate_1m = result['SUMMARY'][0]['MHS 1m']
-    #         status = {
-    #             "power": power,
-    #             "env_temp": env_temp,
-    #             "freq_avg": freq_avg,
-    #             "fan_speed_in": fan_speed_in,
-    #             "fan_speed_out": fan_speed_out,
-    #             "hashrate_1m": "%4.1f TH/s" % (hashrate_1m / 1000000),
-    #         }
-
-    #         result = WhatsminerAPI.get_read_only_info(whatsminer_token, cmd='edevs')
-    #         hashboards = []
-    #         for board in result['DEVS']:
-    #             hashboards.append({
-    #                 "temp": board['Temperature'],
-    #                 "hashrate_1m": "%.1f TH/s" % (board['MHS 1m'] / 1000000),
-    #             })
-    #         status["hashboards"] = hashboards
-
-    #         print(f"""{datetime.datetime.now():%Y-%m-%d %H:%M:%S}: is_mining: {is_mining}  |  {cur_electricity_price:5.1f} ¢/kWh  |  {status["power"]:4d}W  |  {status["env_temp"] * 1.8 + 32:5.1f}F ({status["env_temp"]}C)  |  {status["fan_speed_in"]}-{status["fan_speed_out"]}rpm  |  {status["hashrate_1m"]}  |  {", ".join([str(hb["temp"]) for hb in status["hashboards"]])}""")
-    #     except Exception as e:
-    #         # Log it but don't worry; can get bad response if mining just recently resumed.
-    #         print(repr(e))
-    #         fan_speed_in = 0
-    #         freq_avg = 0
-
-    # else:
-    #     print(f"""{datetime.datetime.now():%Y-%m-%d %H:%M:%S}: is_mining: {is_mining}  |  {cur_electricity_price:0.2f}¢/kWh""")
+    new_freq_due_to_price = cur_freq
 
     subject = "Error?"
 
     if cur_electricity_price > max_electricity_price:
         # Reduce miner freq, we've passed the price threshold
-        new_freq = cur_freq - freq_step
-        if new_freq < min_freq:
+        new_freq_due_to_price = max(min_freq, cur_freq - freq_step)
+        if new_freq_due_to_price == cur_freq:
             subject = "Already at min freq"
  
-        else:        
-            config.mining_mode.global_freq = new_freq
-            result = await miner.send_config(config)
+        else:
+            config.mining_mode.global_freq = new_freq_due_to_price
 
-            subject = f"REDUCING miner freq @ {cur_electricity_price:0.2f}¢/kWh to {new_freq}"
-            # msg = json.dumps(response, indent=4)
+            subject = f"REDUCING miner freq @ {cur_electricity_price:0.2f}¢/kWh to {new_freq_due_to_price}"
             # sns.publish(
             #     TopicArn=sns_topic,
             #     Subject=subject,
             #     Message=msg
             # )
-            # print(f"{datetime.datetime.now()}: {subject}")
             # print(msg)
 
     elif cur_electricity_price < max_electricity_price:
@@ -164,28 +124,50 @@ async def run(arg_config: configparser.ConfigParser):
                 break
 
         if resume_mining:
-            new_freq = cur_freq + freq_step
-            if new_freq > max_freq:
+            new_freq_due_to_price = min(max_freq, cur_freq + freq_step)
+            if new_freq_due_to_price == cur_freq:
                 subject = "Already at max freq"
 
             else:
-                config.mining_mode.global_freq = new_freq
-                result = await miner.send_config(config)
+                config.mining_mode.global_freq = new_freq_due_to_price
 
-                subject = f"INCREASING miner freq @ {cur_electricity_price:0.2f}¢/kWh to {new_freq}"
-                # msg = json.dumps(response, indent=4)
+                subject = f"INCREASING miner freq @ {cur_electricity_price:0.2f}¢/kWh to {new_freq_due_to_price}"
                 # sns.publish(
                 #     TopicArn=sns_topic,
                 #     Subject=subject,
                 #     Message=msg
                 # )
-                # print(f"{datetime.datetime.now()}: {subject}")
                 # print(msg)
         
         else:
             subject = f"Holding freq, pending {resume_after} periods below threshold"
 
-    print(f"{datetime.datetime.now()}: freq: {cur_freq} MHz ({min_freq}-{max_freq}) | {cur_electricity_price:0.2f}¢/kWh ({max_electricity_price}) | {subject}")
+    new_freq_due_to_temp = cur_freq
+    if cur_temp >= max_temp:
+        # Reduce miner freq, we've passed the temperature threshold
+        new_freq_due_to_temp = cur_freq - freq_step  # we do NOT respect min_freq because heat death is bad
+        subject = f"REDUCING miner freq @ {cur_temp}°C to {new_freq_due_to_temp}"
+
+    elif cur_temp <= resume_at_temp:
+        # Resume mining? Temperature has fallen below our threshold
+        new_freq_due_to_temp = min(max_freq, cur_freq + freq_step)
+        subject = f"INCREASING miner freq @ {cur_temp}°C to {new_freq_due_to_temp}"
+    
+    if new_freq_due_to_price != cur_freq or new_freq_due_to_temp != cur_freq:
+        # Have to decide which change to apply; heat takes precedence.
+        if new_freq_due_to_temp < cur_freq:
+            new_freq = new_freq_due_to_temp
+        elif new_freq_due_to_price < cur_freq:
+            new_freq = new_freq_due_to_price
+        elif new_freq_due_to_temp > cur_freq:
+            new_freq = new_freq_due_to_temp
+        elif new_freq_due_to_price > cur_freq:
+            new_freq = new_freq_due_to_price
+
+        config.mining_mode.global_freq = new_freq
+        await miner.send_config(config)
+
+    print(f"{datetime.datetime.now()}: freq: {cur_freq} MHz ({min_freq}-{max_freq}) | {cur_electricity_price:0.2f}¢/kWh ({max_electricity_price}) | {cur_temp}°C ({resume_at_temp}-{max_temp}) | {subject}")
 
 
 
