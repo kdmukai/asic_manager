@@ -148,7 +148,7 @@ async def run(arg_config: configparser.ConfigParser):
         new_freq_due_to_temp = cur_freq - freq_step  # we do NOT respect min_freq because heat death is bad
         subject = f"REDUCING miner freq @ {cur_temp}°C to {new_freq_due_to_temp}"
 
-    elif cur_temp <= resume_at_temp:
+    elif cur_temp <= resume_at_temp and cur_freq < max_freq:
         # Resume mining? Temperature has fallen below our threshold
         new_freq_due_to_temp = min(max_freq, cur_freq + freq_step)
         subject = f"INCREASING miner freq @ {cur_temp}°C to {new_freq_due_to_temp}"
