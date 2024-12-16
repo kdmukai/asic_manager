@@ -3,7 +3,6 @@ import asyncio
 # import boto3
 import configparser
 import datetime
-import json
 import time
 
 from decimal import Decimal
@@ -23,6 +22,7 @@ async def run(arg_config: configparser.ConfigParser):
     resume_after = arg_config.getint('ASIC', 'RESUME_AFTER')
     max_temp = arg_config.getint('ASIC', 'MAX_TEMP')
     resume_at_temp = arg_config.getint('ASIC', 'RESUME_AT_TEMP')
+    temp_freq_step = arg_config.getint('ASIC', 'TEMP_FREQ_STEP')
 
     # weather_api_key = arg_config.get('APIS', 'WEATHER_API_KEY')
     # weather_zip_code = arg_config.get('APIS', 'WEATHER_ZIP_CODE')
@@ -38,22 +38,6 @@ async def run(arg_config: configparser.ConfigParser):
     #     aws_secret_access_key=aws_secret_access_key,
     #     region_name="us-east-1"     # N. Virginia
     # )
-
-    # if force_power_off:
-    #     # Shut down the miner and exit
-    #     whatsminer_token.enable_write_access(admin_password=admin_password)
-    #     response = WhatsminerAPI.exec_command(whatsminer_token, cmd='power_off', additional_params={"respbefore": "false"})
-    #     subject = f"STOPPING miner via force_power_off"
-    #     msg = "force_power_off called"
-    #     sns.publish(
-    #         TopicArn=sns_topic,
-    #         Subject=subject,
-    #         Message=msg
-    #     )
-    #     print(f"{datetime.datetime.now()}: {subject}")
-    #     print(msg)
-    #     print(json.dumps(response, indent=4))
-    #     exit()
 
     # Get the current electricity price
     try:
@@ -95,6 +79,7 @@ async def run(arg_config: configparser.ConfigParser):
 
     subject = "Error?"
 
+    is_holding_due_to_price = False
     if cur_electricity_price > max_electricity_price:
         # Reduce miner freq, we've passed the price threshold
         new_freq_due_to_price = max(min_freq, cur_freq - freq_step)
@@ -103,14 +88,7 @@ async def run(arg_config: configparser.ConfigParser):
  
         else:
             config.mining_mode.global_freq = new_freq_due_to_price
-
-            subject = f"REDUCING miner freq @ {cur_electricity_price:0.2f}¢/kWh to {new_freq_due_to_price} MHz"
-            # sns.publish(
-            #     TopicArn=sns_topic,
-            #     Subject=subject,
-            #     Message=msg
-            # )
-            # print(msg)
+            subject = f"REDUCING miner freq to {new_freq_due_to_price} MHz"
 
     elif cur_electricity_price < max_electricity_price:
         # Resume mining? Electricity price has fallen below our threshold; but don't
@@ -130,45 +108,48 @@ async def run(arg_config: configparser.ConfigParser):
 
             else:
                 config.mining_mode.global_freq = new_freq_due_to_price
-
-                subject = f"INCREASING miner freq @ {cur_electricity_price:0.2f}¢/kWh to {new_freq_due_to_price} MHz"
-                # sns.publish(
-                #     TopicArn=sns_topic,
-                #     Subject=subject,
-                #     Message=msg
-                # )
-                # print(msg)
+                subject = f"INCREASING miner freq to {new_freq_due_to_price} MHz"
         
         else:
+            is_holding_due_to_price = True
             subject = f"Holding freq, pending {resume_after} periods below threshold"
 
     new_freq_due_to_temp = cur_freq
     if cur_temp >= max_temp:
         # Reduce miner freq, we've passed the temperature threshold
-        new_freq_due_to_temp = cur_freq - freq_step  # we do NOT respect min_freq because heat death is bad
-        subject = f"REDUCING miner freq @ {cur_temp}°C to {new_freq_due_to_temp} MHz"
+        new_freq_due_to_temp = cur_freq - temp_freq_step  # we do NOT respect min_freq because heat death is bad
+        subject = f"REDUCING miner freq to {new_freq_due_to_temp} MHz"
+        is_holding_due_to_price = False
 
-    elif cur_temp <= resume_at_temp and cur_freq < max_freq:
+    elif cur_temp < resume_at_temp and cur_freq < max_freq and not is_holding_due_to_price:
         # Resume mining? Temperature has fallen below our threshold
-        new_freq_due_to_temp = min(max_freq, cur_freq + freq_step)
-        subject = f"INCREASING miner freq @ {cur_temp}°C to {new_freq_due_to_temp} MHz"
+        new_freq_due_to_temp = min(max_freq, cur_freq + temp_freq_step)
+        subject = f"INCREASING miner freq to {new_freq_due_to_temp} MHz"
     
     else:
         # We are within our temp bounds; don't allow low price to increase temp
         if new_freq_due_to_price > cur_freq:
             new_freq_due_to_price = cur_freq
-            subject = f"Holding {cur_freq} MHz @ {cur_temp}°C; in target temp range"
-    
+            if not is_holding_due_to_price:
+                # Avoid overwriting the subject if we're already holding due to price
+                subject = f"Holding in target temp range"
+
     if new_freq_due_to_price != cur_freq or new_freq_due_to_temp != cur_freq:
         # Have to decide which change to apply; heat takes precedence.
         if new_freq_due_to_temp < cur_freq:
+            # Must ramp down due to temp
             new_freq = new_freq_due_to_temp
+
         elif new_freq_due_to_price < cur_freq:
+            # Electricity costs are forcing us to ramp down
             new_freq = new_freq_due_to_price
-        elif new_freq_due_to_temp > cur_freq:
+
+        elif new_freq_due_to_temp > cur_freq and new_freq_due_to_price > cur_freq:
+            # Can only increase if both temp and price allow for it; use the slower step increase
             new_freq = new_freq_due_to_temp
-        elif new_freq_due_to_price > cur_freq:
-            new_freq = new_freq_due_to_price
+
+        else:
+            print("UNHANDLED CASE!")
 
         config.mining_mode.global_freq = new_freq
         await miner.send_config(config)
@@ -180,27 +161,13 @@ async def run(arg_config: configparser.ConfigParser):
 
 parser = argparse.ArgumentParser(description='vnish custom manager')
 
-# Required positional arguments
-# parser.add_argument('max_electricity_price', type=Decimal,
-#                     help="Threshold above which the ASIC reduces chip frequency")
-
 # Optional switches
 parser.add_argument('-c', '--settings',
                     default="settings.conf",
                     dest="settings_config",
                     help="Override default settings config file location")
 
-# parser.add_argument('-f', '--force_power_off',
-#                     action="store_true",
-#                     default=False,
-#                     dest="force_power_off",
-#                     help="Stops mining and exits")
-
-
-
 args = parser.parse_args()
-
-# force_power_off = args.force_power_off
 
 # Read settings
 arg_config = configparser.ConfigParser()
