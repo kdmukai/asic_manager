@@ -88,7 +88,6 @@ async def run(arg_config: configparser.ConfigParser):
  
         else:
             config.mining_mode.global_freq = new_freq_due_to_price
-            subject = f"REDUCING miner freq to {new_freq_due_to_price} MHz"
 
     elif cur_electricity_price < max_electricity_price:
         # Resume mining? Electricity price has fallen below our threshold; but don't
@@ -108,7 +107,6 @@ async def run(arg_config: configparser.ConfigParser):
 
             else:
                 config.mining_mode.global_freq = new_freq_due_to_price
-                subject = f"INCREASING miner freq to {new_freq_due_to_price} MHz"
         
         else:
             is_holding_due_to_price = True
@@ -118,13 +116,11 @@ async def run(arg_config: configparser.ConfigParser):
     if cur_temp >= max_temp:
         # Reduce miner freq, we've passed the temperature threshold
         new_freq_due_to_temp = cur_freq - temp_freq_step  # we do NOT respect min_freq because heat death is bad
-        subject = f"REDUCING miner freq to {new_freq_due_to_temp} MHz"
         is_holding_due_to_price = False
 
     elif cur_temp < resume_at_temp and cur_freq < max_freq and not is_holding_due_to_price:
         # Resume mining? Temperature has fallen below our threshold
         new_freq_due_to_temp = min(max_freq, cur_freq + temp_freq_step)
-        subject = f"INCREASING miner freq to {new_freq_due_to_temp} MHz"
     
     else:
         # We are within our temp bounds; don't allow low price to increase temp
@@ -139,14 +135,17 @@ async def run(arg_config: configparser.ConfigParser):
         if new_freq_due_to_temp < cur_freq:
             # Must ramp down due to temp
             new_freq = new_freq_due_to_temp
+            subject = f"REDUCING miner freq to {new_freq} MHz due to temp"
 
         elif new_freq_due_to_price < cur_freq:
             # Electricity costs are forcing us to ramp down
             new_freq = new_freq_due_to_price
+            subject = f"REDUCING miner freq to {new_freq} MHz due to price"
 
         elif new_freq_due_to_temp > cur_freq and new_freq_due_to_price > cur_freq:
             # Can only increase if both temp and price allow for it; use the slower step increase
             new_freq = new_freq_due_to_temp
+            subject = f"INCREASING miner freq to {new_freq} MHz"
 
         else:
             print("UNHANDLED CASE!")
